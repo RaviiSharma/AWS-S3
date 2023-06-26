@@ -78,7 +78,8 @@ const download = async (candidate_ref_no) => {
 //___________________________________________________________/ API /______________________________________________________
 
 
-const isValidImageType = function (value) {const regexForMimeTypes = /image\/png|image\/jpeg|image\/jpg/;return regexForMimeTypes.test(value)};
+const isValidImageType = function (value) {const regexForMimeTypes = /image\/png|image\/jpeg|image\/jpg|application\/pdf/;
+return regexForMimeTypes.test(value)};
 
 //________________________________________________________/ uploadImage /_______________________________________________
 app.post('/uploadImage', async (req, res) => {
@@ -95,12 +96,18 @@ app.post('/uploadImage', async (req, res) => {
         const fileName = `${candidate_ref_no}`; 
         console.log("fileName",fileName)
 
-        const uploadedProfilePictureUrl = await uploadFile(image[0], candidate_ref_no);
-        console.log("uploadedProfilePictureUrl", uploadedProfilePictureUrl)
-       
-        await db('ptr_candidates').where('candidate_ref_no', candidate_ref_no).update({'candidate_resume':fileName })//update table column
-        .then((resp) => {return res.status(201) .send({ status: true, message: "successfully inserted" });})
-        .catch((error) => {return res.status(500).send({ error: error.message });});
+        let vv=await db('ptr_candidates').where('candidate_ref_no', candidate_ref_no)
+        if(vv.length !==0){ //geeting aaray thats why i checking vv.length !==0
+          const uploadedProfilePictureUrl = await uploadFile(image[0], candidate_ref_no);
+          console.log("uploadedProfilePictureUrl", uploadedProfilePictureUrl)
+         
+          await db('ptr_candidates').where('candidate_ref_no', candidate_ref_no).update({'candidate_resume':fileName })//update table column
+          .then((resp) => {return res.status(201) .send({ status: true, message: "successfully inserted" });})
+          .catch((error) => {return res.status(500).send({ error: error.message });});
+        }else{
+                return res.status(400).send({msg:"not present candidate_ref_no in table"})
+        }
+        
       
     } catch (error) {res.status(500).send({ error: error.message });}
 });
