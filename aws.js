@@ -1,7 +1,7 @@
 const AWS = require('aws-sdk')
 require('dotenv').config()
 
-
+//AWS credential 
 AWS.config.update({
   secretAccessKey: process.env.ACCESS_SECRET,
   accessKeyId: process.env.ACCESS_KEY,
@@ -11,10 +11,23 @@ AWS.config.update({
 const BUCKET = process.env.BUCKET
 const s3 = new AWS.S3();
 
-
-//const s3 = new AWS.S3({ appVersion: '2006-03-01' })
-//const bucketName = "classroom-training-bucket";
 const baseUrl = `https://${BUCKET}.s3.${AWS.config.region}.amazonaws.com/`;
+
+//_______________________________________________________________________________________________________________________________________________
+  
+const express = require('express');
+const bodyParser = require('body-parser');
+const multer = require('multer');
+
+const app = express();
+app.use(bodyParser.json());
+app.use(multer().any());
+
+const knex = require("knex");
+
+const db = knex({client: "mysql",connection: {host: "localhost",user: "root",database: "attendance_dev", password: ""}});
+
+//______________________________________________________/ aws functions /__________________________________________________________________
 
 var uploadFile = async (file, candidate_ref_no) => {
   return new Promise(function (resolve, reject) {
@@ -40,7 +53,6 @@ var uploadFile = async (file, candidate_ref_no) => {
   });
 }
 
-//____________________________________________________________________________
 
 const download = async (candidate_ref_no) => {
   return new Promise((resolve, reject) => {
@@ -61,35 +73,55 @@ const download = async (candidate_ref_no) => {
       return resolve(url);
     });
         
-    })
-      
+    })   
   };
+//___________________________________________________________/ API /______________________________________________________
 
 
-// const getAllImages = async () => {
-//   return new Promise((resolve, reject) => {
-//     const listParams = {
-//       Bucket: BUCKET,
-//       Prefix: "abc-aws/"
-     
-//     };
-//     const s3 = new AWS.S3({ appVersion: '2006-03-01' })
-//     s3.listObjectsV2(listParams, (err, data) => {
-//       if (err) {
-//         console.log("Failed to retrieve images:", err);
-//         return reject({ error: err });
-//       }
+const isValidImageType = function (value) {const regexForMimeTypes = /image\/png|image\/jpeg|image\/jpg/;return regexForMimeTypes.test(value)};
 
-//       const images = data.Contents.map((item) => baseUrl + item.Key);
-//       console.log("Retrieved images",images);
-//       //images.shift()
-//       return resolve(images);
-//     });
-//   });
-// };
+//________________________________________________________/ uploadImage /_______________________________________________
+app.post('/uploadImage', async (req, res) => {
+    try {
+        const image = req.files;
+        console.log("image", image);
+        const candidate_ref_no = req.body.candidate_ref_no;
+
+        if (!image || image.length == 0) {return res.status(400).send({ status: false, message: "No image found please provide" });}
+        if (!candidate_ref_no || candidate_ref_no.length == 0) {return res.status(400).send({ status: false, message: "No candidate_ref_no found please provide" });}
+
+        if (!isValidImageType(image[0].mimetype)) {return res.status(400).send({ status: false, message: "Only images can be uploaded (jpeg/jpg/png)" })}
+
+        const fileName = `${candidate_ref_no}`; 
+        console.log("fileName",fileName)
+
+        const uploadedProfilePictureUrl = await uploadFile(image[0], candidate_ref_no);
+        console.log("uploadedProfilePictureUrl", uploadedProfilePictureUrl)
+       
+        await db('ptr_candidates').where('candidate_ref_no', candidate_ref_no).update({'candidate_resume':fileName })//update table column
+        .then((resp) => {return res.status(201) .send({ status: true, message: "successfully inserted" });})
+        .catch((error) => {return res.status(500).send({ error: error.message });});
+      
+    } catch (error) {res.status(500).send({ error: error.message });}
+});
+
+//_________________________________________________/ getSingle /________________________________________________________________________________
+  app.get('/getSingle', async (req, res) => {
+    try {
+      const candidate_ref_no = req.body.candidate_ref_no;
+      if (!candidate_ref_no || candidate_ref_no.length == 0) {return res.status(400).send({ status: false, message: "No candidate_ref_no found please provide" });}
+
+      const url = await download(candidate_ref_no);
+      if(url.length==0){return res.status(400).send({message:"candidate_ref_no not found"})}
+      else{
+        console.log("candidate_ref_no =>> ",candidate_ref_no)
+        res.status(200).send({status: true,message: "single url",data:url});
+      }
+
+    } catch (error) {res.status(500).send({ error: error.message });}
+  });
 
 
-   module.exports = { uploadFile,download,};
-
-
-  
+app.listen(process.env.PORT || 3000 , function () {
+  console.log('Express app running on port' + (process.env.PORT || 3000 ))
+})
